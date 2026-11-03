@@ -1,0 +1,16 @@
+[project]
+name = "session-1-primera-llamada-llm"
+version = "0.1.0"
+description = "Sesión 1 — Tu primera llamada a un LLM vía API (OpenAI y Anthropic)"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0",
+    "anthropic>=0.40",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29",
+    "nbconvert>=7.16",
+]

@@ -13,6 +13,10 @@ Desde la sesión 2, el **Proyecto 1** (estimador de software con IA) vive en [`e
 | 1 | `session_1` | Tu primera llamada a un LLM vía API (`session_1/`) |
 | 2 | `session_2` | [Estimador CAG con FastAPI](estimator/README.md) |
 
+## Documentación
+
+Notas y análisis de las sesiones en [`docs/`](docs/README.md).
+
 ## Stack
 
 Python 3.11+ · [uv](https://docs.astral.sh/uv/) · FastAPI · Docker Compose · Streamlit

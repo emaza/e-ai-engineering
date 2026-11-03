@@ -1,0 +1,19 @@
+# Variables de entorno (contienen API keys)
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Entornos virtuales
+.venv/
+
+# Caches de tests / lint
+.pytest_cache/
+.ruff_cache/
+
+# SO / IDEs
+.DS_Store
+.idea/
+.vscode/

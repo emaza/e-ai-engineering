@@ -4,11 +4,14 @@ Ejercicios del curso **AI Engineering** de [LIDR](https://www.lidr.co/ai-enginee
 
 ## Organización
 
-Cada sesión se desarrolla en su propia rama (`session_1`, `session_2`, …) y en su propia carpeta (`session_N/`).
+Cada sesión se desarrolla en su propia rama (`session_1`, `session_2`, …). El material de la sesión en vivo va en `session_N_live`.
+
+Desde la sesión 2, el **Proyecto 1** (estimador de software con IA) vive en [`estimator/`](estimator/README.md) y evoluciona de sesión en sesión.
 
 | Sesión | Rama | Ejercicio |
 |---|---|---|
-| 1 | `session_1` | [Tu primera llamada a un LLM vía API](session_1/README.md) |
+| 1 | `session_1` | Tu primera llamada a un LLM vía API (`session_1/`) |
+| 2 | `session_2` | [Estimador CAG con FastAPI](estimator/README.md) |
 
 ## Stack
 

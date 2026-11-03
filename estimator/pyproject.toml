@@ -1,0 +1,35 @@
+[project]
+name = "estimator"
+version = "0.1.0"
+description = "Servicio FastAPI de estimación de proyectos de software con un LLM y arquitectura CAG"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=2.4.0",
+    "fastapi>=0.162.0",
+    "openai>=3.42.1",
+    "pydantic-settings>=2.16.2",
+    "python-dotenv>=1.2.4",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# El system prompt es prosa: no partimos sus líneas
+"app/services/llm_service.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]

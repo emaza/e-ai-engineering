@@ -1,0 +1,52 @@
+name: estimator
+
+on:
+  push:
+    paths:
+      - "estimator/**"
+      - ".github/workflows/estimator.yml"
+  pull_request:
+    paths:
+      - "estimator/**"
+      - ".github/workflows/estimator.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: estimator
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Instalar dependencias
+        run: uv sync --locked
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Tests (estructura, config, contexto CAG, endpoints con LLM simulado)
+        run: uv run pytest -v
+
+      - name: Smoke test (arranca el servicio y comprueba /health y /docs)
+        env:
+          # Key ficticia: solo valida que el servicio arranca; no se llama al LLM
+          OPENAI_API_KEY: sk-ci-dummy
+          LLM_PROVIDER: openai
+        run: |
+          uv run uvicorn app.main:app --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            sleep 1
+          done
+          curl -sf http://localhost:8000/health | grep -q '"status":"healthy"'
+          curl -sf -o /dev/null http://localhost:8000/docs
+          echo "✅ Servicio operativo"

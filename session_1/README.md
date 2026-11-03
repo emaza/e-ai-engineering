@@ -1,8 +1,14 @@
 # Sesión 1 — Tu primera llamada a un LLM vía API
 
-Notebook: [`primera_llamada_llm.ipynb`](primera_llamada_llm.ipynb)
+| Notebook | Qué es |
+|---|---|
+| [`primera_llamada_llm.ipynb`](primera_llamada_llm.ipynb) | Nuestra solución al ejercicio previo a la sesión (niveles 1–3) |
+| [`Copia_de_LIDR___AI_Engineering_S1_sesion_01_notebook_sesion_en_vivo.ipynb`](Copia_de_LIDR___AI_Engineering_S1_sesion_01_notebook_sesion_en_vivo.ipynb) | Notebook de la sesión en vivo del tutor, **sin modificar** (referencia) |
+| [`sesion_01_en_vivo_corregido.ipynb`](sesion_01_en_vivo_corregido.ipynb) | Copia del notebook del tutor con los problemas detectados corregidos y comentados (🔧), ejecutable también en local |
 
-Hace la primera integración real con un LLM desde Python: envía un mensaje, recibe la respuesta y muestra cómo cambia el comportamiento del modelo según las instrucciones que recibe. Funciona con **OpenAI** y con **Anthropic**: si solo hay key de uno de los dos, las celdas del otro se saltan con un aviso.
+## Ejercicio previo: `primera_llamada_llm.ipynb`
+
+El notebook hace la primera integración real con un LLM desde Python: envía un mensaje, recibe la respuesta y muestra cómo cambia el comportamiento del modelo según las instrucciones que recibe. Funciona con **OpenAI** y con **Anthropic**: si solo hay key de uno de los dos, las celdas del otro se saltan con un aviso.
 
 | Nivel | Contenido | |
 |---|---|---|
@@ -22,7 +28,7 @@ Hace la primera integración real con un LLM desde Python: envía un mensaje, re
 ```bash
 cd session_1
 cp .env.example .env      # y rellena las keys
-uv sync                   # crea .venv con openai, anthropic, python-dotenv, ipykernel
+uv sync                   # crea .venv con openai, anthropic, tiktoken, litellm, python-dotenv, ipykernel
 ```
 
 Abre el notebook en VS Code (o Jupyter) con el kernel de `session_1/.venv`. Para ejecutarlo entero desde la terminal:

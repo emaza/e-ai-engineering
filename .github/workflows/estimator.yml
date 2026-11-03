@@ -18,10 +18,10 @@ jobs:
         working-directory: estimator
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -42,7 +42,10 @@ jobs:
           OPENAI_API_KEY: sk-ci-dummy
           LLM_PROVIDER: openai
         run: |
-          uv run uvicorn app.main:app --port 8000 &
+          # Lanzamos uvicorn directamente desde el .venv (no con `uv run`): un proceso
+          # uv vivo en segundo plano bloquea la caché y hace fallar el post-step de setup-uv
+          .venv/bin/uvicorn app.main:app --port 8000 &
+          trap 'kill $!' EXIT
           for i in $(seq 1 30); do
             curl -sf http://localhost:8000/health && break
             sleep 1
@@ -59,7 +62,7 @@ jobs:
         working-directory: estimator
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build de la imagen
         run: docker build -t estimator:ci .

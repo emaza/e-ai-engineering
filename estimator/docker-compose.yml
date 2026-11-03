@@ -1,0 +1,18 @@
+# Desarrollo local: `docker compose up --build`
+# Para producción, quita el volumen y el --reload.
+
+services:
+  estimator:
+    build: .
+    image: estimator:dev
+    container_name: estimator
+    ports:
+      - "8000:8000"
+    # API keys y configuración desde el .env local (nunca entra en la imagen)
+    env_file:
+      - .env
+    # Monta el código para que los cambios se vean sin reconstruir la imagen
+    volumes:
+      - ./app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped

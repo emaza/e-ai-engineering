@@ -1,0 +1,20 @@
+# Nunca meter secretos ni entornos locales en la imagen
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.git
+.gitignore
+.DS_Store
+.idea/
+.vscode/
+
+# No necesarios para ejecutar el servicio
+tests/
+data/
+README.md
+Dockerfile
+docker-compose.yml
+.dockerignore

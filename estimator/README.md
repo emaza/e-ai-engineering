@@ -38,6 +38,20 @@ uv run uvicorn app.main:app --reload
 
 > La configuración se cachea al arrancar. Si cambias `.env` (por ejemplo, el `LLM_PROVIDER`), **reinicia uvicorn**: `--reload` solo detecta cambios en el código.
 
+### Con Docker
+
+```bash
+cd estimator
+cp .env.example .env     # y pon tu API key
+docker compose up --build
+```
+
+- La imagen es multi-stage, con las dependencias instaladas por uv desde `uv.lock`. Corre con un usuario **no root** y trae un `HEALTHCHECK` sobre `/health`.
+- `docker compose` lee las keys de `.env` al arrancar. El `.env` **nunca entra en la imagen**: lo excluye `.dockerignore`.
+- En desarrollo, compose monta `./app` dentro del contenedor y arranca con `--reload`, así que los cambios en el código se aplican sin reconstruir la imagen. Para producción hay que quitar el volumen y el `--reload`.
+- Si cambias `.env`, ejecuta `docker compose up -d` para recrear el contenedor; un simple restart no recarga las variables.
+- Para pararlo: `docker compose down`.
+
 ### Variables de entorno
 
 | Variable | Descripción | Por defecto |
@@ -88,7 +102,7 @@ Los tests no llaman al LLM: lo simulan, así que no cuestan dinero. Comprueban:
 - `/health`, `/docs` y `/estimate` (200, 422 y 502);
 - el parseo de las respuestas de los dos SDKs.
 
-El workflow [`.github/workflows/estimator.yml`](../.github/workflows/estimator.yml) ejecuta todo esto en cada push que toque `estimator/`. Al final arranca el servicio y comprueba que `/health` y `/docs` responden.
+El workflow [`.github/workflows/estimator.yml`](../.github/workflows/estimator.yml) ejecuta todo esto en cada push que toque `estimator/`. Después arranca el servicio y comprueba que `/health` y `/docs` responden. Por último, construye la imagen Docker y verifica que el contenedor queda *healthy*, que corre sin root y que no incluye el `.env`.
 
 ## Checklist del ejercicio (sesión 2)
 
@@ -99,3 +113,4 @@ El workflow [`.github/workflows/estimator.yml`](../.github/workflows/estimator.y
 - [x] La estimación se inspira en los ejemplos de contexto inyectados
 - [x] Swagger accesible en `/docs`
 - [x] `.env` está en `.gitignore`
+- [x] Arranca con Docker (`docker compose up --build`)

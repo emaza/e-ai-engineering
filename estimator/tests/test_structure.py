@@ -20,6 +20,9 @@ REQUIRED_PATHS = [
     ".gitignore",
     "pyproject.toml",
     "README.md",
+    "Dockerfile",
+    "docker-compose.yml",
+    ".dockerignore",
 ]
 
 
@@ -51,3 +54,8 @@ def test_env_example_has_no_real_keys() -> None:
         if line.endswith("_API_KEY=") or line.startswith("#"):
             continue
         assert "_API_KEY=" not in line, f"Posible key real en .env.example: {line.split('=')[0]}"
+
+
+def test_dockerignore_excludes_secrets() -> None:
+    ignored = (ROOT / ".dockerignore").read_text().splitlines()
+    assert ".env" in ignored

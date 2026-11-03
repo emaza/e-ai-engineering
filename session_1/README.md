@@ -28,7 +28,7 @@ uv sync                   # crea .venv con openai, anthropic, python-dotenv, ipy
 Abre el notebook en VS Code (o Jupyter) con el kernel de `session_1/.venv`. Para ejecutarlo entero desde la terminal:
 
 ```bash
-uv run jupyter nbconvert --to notebook --execute primera_llamada_llm.ipynb --output /tmp/salida.ipynb
+uv run jupyter nbconvert --to notebook --execute primera_llamada_llm.ipynb --output-dir /tmp --output salida.ipynb
 ```
 
 ## Modelos y precios

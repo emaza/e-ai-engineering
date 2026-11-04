@@ -4,10 +4,12 @@ Patrón de mensajes:
     [system]    → instrucciones + ejemplos de estimaciones previas (contexto CAG)
     [user]      → transcripción de la reunión a estimar
     [assistant] → estimación generada por el modelo
+    ...         → en el chat (EstimationStream) siguen los turnos de ajuste del usuario
 """
 
 import logging
 import time
+from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Any
 
@@ -77,24 +79,76 @@ def _anthropic_client(api_key: str) -> anthropic.AsyncAnthropic:
     return anthropic.AsyncAnthropic(api_key=api_key)
 
 
+Messages = list[dict[str, str]]
+
+
 async def generate_estimation(transcription: str, settings: Settings) -> dict[str, Any]:
     """Genera la estimación con el proveedor configurado en LLM_PROVIDER.
 
     Ambos proveedores devuelven el mismo dict, así el router no depende del proveedor.
     """
+    messages = [{"role": "user", "content": transcription}]
     system_prompt = build_system_prompt()
     logger.info("Generando estimación con %s/%s", settings.LLM_PROVIDER, settings.model)
 
     start = time.perf_counter()
     try:
         if settings.LLM_PROVIDER == "openai":
-            result = await _call_openai(system_prompt, transcription, settings)
+            result = await _call_openai(system_prompt, messages, settings)
         else:
-            result = await _call_anthropic(system_prompt, transcription, settings)
+            result = await _call_anthropic(system_prompt, messages, settings)
     except (openai.APIError, anthropic.APIError) as exc:
-        logger.error("Fallo en la llamada a %s: %s", settings.LLM_PROVIDER, exc)
-        raise LLMServiceError(f"Error del proveedor {settings.LLM_PROVIDER}: {exc}") from exc
+        raise _provider_error(settings, exc) from exc
 
+    return _finalize(result, start)
+
+
+class EstimationStream:
+    """Estimación en streaming: al iterarla da los trozos de texto según llegan.
+
+    Recibe el historial completo de la conversación (turnos user/assistant), así el usuario
+    puede pedir ajustes sobre una estimación anterior. Al terminar la iteración, `result`
+    contiene el mismo dict que `generate_estimation`.
+    """
+
+    def __init__(self, messages: Messages, settings: Settings) -> None:
+        self.messages = messages
+        self.settings = settings
+        self.result: dict[str, Any] | None = None
+
+    async def __aiter__(self) -> AsyncIterator[str]:
+        settings = self.settings
+        system_prompt = build_system_prompt()
+        logger.info(
+            "Generando estimación en streaming con %s/%s (%s mensajes)",
+            settings.LLM_PROVIDER,
+            settings.model,
+            len(self.messages),
+        )
+
+        start = time.perf_counter()
+        meta: dict[str, Any] = {}
+        chunks: list[str] = []
+        stream = _stream_openai if settings.LLM_PROVIDER == "openai" else _stream_anthropic
+        try:
+            async for text in stream(system_prompt, self.messages, settings, meta):
+                chunks.append(text)
+                yield text
+        except (openai.APIError, anthropic.APIError) as exc:
+            raise _provider_error(settings, exc) from exc
+
+        if not meta:
+            raise LLMServiceError(f"El streaming de {settings.LLM_PROVIDER} terminó sin metadatos")
+        self.result = _finalize({"estimation": "".join(chunks), **meta}, start)
+
+
+def _provider_error(settings: Settings, exc: Exception) -> LLMServiceError:
+    logger.error("Fallo en la llamada a %s: %s", settings.LLM_PROVIDER, exc)
+    return LLMServiceError(f"Error del proveedor {settings.LLM_PROVIDER}: {exc}")
+
+
+def _finalize(result: dict[str, Any], start: float) -> dict[str, Any]:
+    """Añade latencia y coste a la respuesta del proveedor y registra la llamada."""
     result["latency_ms"] = round((time.perf_counter() - start) * 1000)
     usage = result["usage"]
     result["estimated_cost_usd"] = estimate_cost(
@@ -111,21 +165,25 @@ async def generate_estimation(transcription: str, settings: Settings) -> dict[st
     return result
 
 
-async def _call_openai(system_prompt: str, transcription: str, settings: Settings) -> dict:
+async def _call_openai(system_prompt: str, messages: Messages, settings: Settings) -> dict:
     """OpenAI Responses API: `instructions` es el system prompt e `input` el mensaje de usuario."""
     response = await _openai_client(settings.api_key).responses.create(
         model=settings.model,
         instructions=system_prompt,
-        input=[{"role": "user", "content": transcription}],
+        input=messages,
         max_output_tokens=MAX_OUTPUT_TOKENS,
     )
+    return {"estimation": response.output_text, **_openai_meta(response)}
+
+
+def _openai_meta(response: Any) -> dict[str, Any]:
+    """Modelo, uso de tokens y motivo de fin de una respuesta de la Responses API."""
     truncated = (
         response.status == "incomplete"
         and response.incomplete_details is not None
         and response.incomplete_details.reason == "max_output_tokens"
     )
     return {
-        "estimation": response.output_text,
         "model": response.model,
         "provider": "openai",
         "usage": {
@@ -137,25 +195,66 @@ async def _call_openai(system_prompt: str, transcription: str, settings: Setting
     }
 
 
-async def _call_anthropic(system_prompt: str, transcription: str, settings: Settings) -> dict:
+async def _stream_openai(
+    system_prompt: str, messages: Messages, settings: Settings, meta: dict[str, Any]
+) -> AsyncIterator[str]:
+    """Con `stream=True` la Responses API emite eventos: el texto llega en los
+    `response.output_text.delta` y el uso de tokens en el evento final."""
+    stream = await _openai_client(settings.api_key).responses.create(
+        model=settings.model,
+        instructions=system_prompt,
+        input=messages,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        stream=True,
+    )
+    async for event in stream:
+        if event.type == "response.output_text.delta":
+            yield event.delta
+        elif event.type in ("response.completed", "response.incomplete"):
+            meta.update(_openai_meta(event.response))
+        elif event.type in ("response.failed", "error"):
+            raise LLMServiceError(f"Error del proveedor openai durante el streaming: {event}")
+
+
+async def _call_anthropic(system_prompt: str, messages: Messages, settings: Settings) -> dict:
     """Anthropic Messages API: el system prompt va en un parámetro aparte."""
     response = await _anthropic_client(settings.api_key).messages.create(
         model=settings.model,
         max_tokens=MAX_OUTPUT_TOKENS,
         system=system_prompt,
-        messages=[{"role": "user", "content": transcription}],
+        messages=messages,
     )
     # La respuesta es una lista de bloques; solo nos interesan los de texto
     # (los modelos con razonamiento añaden bloques `thinking` antes del texto).
     text = "".join(block.text for block in response.content if block.type == "text")
+    return {"estimation": text, **_anthropic_meta(response)}
+
+
+def _anthropic_meta(message: Any) -> dict[str, Any]:
+    """Modelo, uso de tokens y motivo de fin de un mensaje de Anthropic."""
     return {
-        "estimation": text,
-        "model": response.model,
+        "model": message.model,
         "provider": "anthropic",
         "usage": {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-            "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+            "input_tokens": message.usage.input_tokens,
+            "output_tokens": message.usage.output_tokens,
+            "total_tokens": message.usage.input_tokens + message.usage.output_tokens,
         },
-        "finish_reason": "length" if response.stop_reason == "max_tokens" else "stop",
+        "finish_reason": "length" if message.stop_reason == "max_tokens" else "stop",
     }
+
+
+async def _stream_anthropic(
+    system_prompt: str, messages: Messages, settings: Settings, meta: dict[str, Any]
+) -> AsyncIterator[str]:
+    """`messages.stream` acumula el mensaje: `text_stream` da solo los deltas de texto y
+    `get_final_message()` el mensaje completo con el uso de tokens."""
+    async with _anthropic_client(settings.api_key).messages.stream(
+        model=settings.model,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        system=system_prompt,
+        messages=messages,
+    ) as stream:
+        async for text in stream.text_stream:
+            yield text
+        meta.update(_anthropic_meta(await stream.get_final_message()))

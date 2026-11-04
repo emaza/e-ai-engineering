@@ -18,8 +18,9 @@ WORKDIR /app
 # reinstalan cuando cambian pyproject.toml o uv.lock
 COPY pyproject.toml uv.lock ./
 
-# Solo dependencias de producción (sin pytest/ruff), exactamente las del lockfile
-RUN uv sync --locked --no-dev --no-install-project
+# Solo dependencias de producción (sin pytest/ruff ni la UI de Streamlit), exactamente
+# las del lockfile
+RUN uv sync --locked --no-default-groups --no-install-project
 
 
 # =============================================================================

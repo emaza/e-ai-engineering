@@ -16,6 +16,7 @@ REQUIRED_PATHS = [
     "app/services/llm_service.py",
     "app/context/__init__.py",
     "app/context/examples.py",
+    "streamlit_app.py",
     ".env.example",
     ".gitignore",
     "pyproject.toml",

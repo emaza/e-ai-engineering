@@ -16,6 +16,10 @@ REQUIRED_PATHS = [
     "app/services/llm_service.py",
     "app/context/__init__.py",
     "app/context/examples.py",
+    "app/services/llm_wrapper.py",
+    "app/services/cache.py",
+    "app/logging_config.py",
+    "streamlit_app.py",
     ".env.example",
     ".gitignore",
     "pyproject.toml",
@@ -45,6 +49,9 @@ def test_env_example_documents_all_variables() -> None:
         "LLM_MODEL",
         "APP_ENV",
         "LOG_LEVEL",
+        "CACHE_ENABLED",
+        "CACHE_TTL_SECONDS",
+        "CACHE_MAX_ENTRIES",
     ):
         assert f"{var}=" in content, f"{var} no está documentada en .env.example"
 

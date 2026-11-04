@@ -62,6 +62,7 @@ La UI es un **cliente HTTP puro**: no importa código de `app/` ni conoce ningun
 - **Panel lateral:** el modelo, los tokens, el tiempo y el coste de la última llamada, y si la respuesta vino de la caché.
 - **Errores:** se muestran en el chat, por ejemplo si la API está parada, si la transcripción es demasiado corta o si falla el proveedor.
 - **Fuera de la imagen Docker:** Streamlit y httpx están en el grupo de dependencias `ui`. `uv sync` los instala, pero la imagen de la API no.
+- **Sin telemetría:** [`.streamlit/config.toml`](.streamlit/config.toml) desactiva las estadísticas de uso que Streamlit envía por defecto desde el navegador (a un webhook de Fivetran). Se aplica al arrancar desde `estimator/`.
 
 > La configuración se cachea al arrancar. Si cambias `.env` (por ejemplo, el `LLM_PROVIDER`), **reinicia uvicorn**: `--reload` solo detecta cambios en el código.
 

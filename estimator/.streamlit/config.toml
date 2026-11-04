@@ -1,0 +1,6 @@
+# Configuración de Streamlit para la UI del estimador
+
+[browser]
+# Sin telemetría: por defecto el navegador envía estadísticas de uso a Streamlit
+# (vía https://data.streamlit.io/metrics.json → webhook de Fivetran)
+gatherUsageStats = false

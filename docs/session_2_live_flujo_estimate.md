@@ -73,6 +73,25 @@ router: si evaluate → services/evaluation.py::evaluate_estimation_structure
 EstimationResponse (JSON)
 ```
 
+En la grabación y el material de la sesión 3, este flujo se presenta con una diapositiva interactiva que recorre la petición en 9 pasos. La primera captura muestra las capas: cliente, API, servicio, contexto, validación y proveedor externo.
+
+![Capas del estimator de LIDR: cliente, API, servicio, contexto, validación y proveedor externo](img/session_3_flujo_estimate_inicio.png)
+
+La segunda muestra el recorrido completo, en el paso 8 de 9:
+
+1. El cliente hace `POST /api/v1/estimate`.
+2. El router valida el `EstimationRequest`.
+3. El router llama a `generate_estimation(opts)`.
+4. `generate_estimation` llama a `build_system_prompt()`.
+5. `build_system_prompt` usa `format_examples_for_prompt()` para inyectar los ejemplos (el CAG).
+6. El servicio llama al proveedor con `chat.completions.create`.
+7. Vuelven la estimación y el `usage`.
+8. El router pasa el texto a `evaluate_estimation_structure()`: 8 comprobaciones deterministas, sin volver a llamar al LLM.
+
+![Recorrido completo de POST /api/v1/estimate en 8 pasos, de la petición del cliente a la validación de la estructura](img/session_3_flujo_estimate_completo.png)
+
+*Capturas de la grabación y el material de la sesión 3 de LIDR, recortadas para dejar solo la diapositiva.*
+
 ### 2.1 Cómo se compone el system prompt
 
 `build_system_prompt` une secciones y descarta las vacías:

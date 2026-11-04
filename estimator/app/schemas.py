@@ -28,10 +28,9 @@ class TokenUsage(BaseModel):
     total_tokens: int
 
 
-class EstimationResponse(BaseModel):
-    """Estimación generada y metadatos de la llamada."""
+class EstimationMetadata(BaseModel):
+    """Metadatos de la llamada al LLM. En streaming viajan en el evento final `done`."""
 
-    estimation: str = Field(..., description="Estimación generada, en Markdown")
     model: str = Field(..., description="Modelo que generó la estimación")
     provider: Literal["openai", "anthropic"]
     usage: TokenUsage
@@ -42,4 +41,11 @@ class EstimationResponse(BaseModel):
     estimated_cost_usd: float | None = Field(
         None, description="Coste estimado según la tabla de precios (None si el modelo no está)"
     )
+    cached: bool = Field(..., description="True si la respuesta salió de la caché exact-match")
     created_at: datetime
+
+
+class EstimationResponse(EstimationMetadata):
+    """Estimación generada y metadatos de la llamada."""
+
+    estimation: str = Field(..., description="Estimación generada, en Markdown")

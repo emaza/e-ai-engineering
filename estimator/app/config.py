@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Annotated, Literal
 
 from fastapi import Depends
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Provider = Literal["openai", "anthropic"]
@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     LLM_MODEL: str | None = None
     APP_ENV: Literal["development", "staging", "production"] = "development"
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "DEBUG"
+    CACHE_ENABLED: bool = True
+    CACHE_TTL_SECONDS: int = Field(default=86_400, gt=0)
+    CACHE_MAX_ENTRIES: int = Field(default=256, gt=0)
 
     @model_validator(mode="after")
     def validate_api_key_for_provider(self) -> "Settings":

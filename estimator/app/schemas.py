@@ -1,23 +1,66 @@
+"""Contrato entre el cliente y el servicio IA.
+
+El cliente ya no envía texto libre: envía parámetros tipados (tipo de proyecto, nivel de
+detalle, formato de salida) que el servicio convierte en prompt con los templates Jinja2.
+Los enums se serializan como su valor ("mobile_app", no "MOBILE_APP").
+"""
+
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Versiones de prompt disponibles: cada una es una carpeta en app/prompts/estimation/
+PromptVersion = Literal["v1", "v2"]
+
+
+# StrEnum (Python 3.11+) equivale al `class X(str, Enum)` del enunciado: se serializa como
+# su valor y además str(ProjectType.MOBILE_APP) == "mobile_app".
+class ProjectType(StrEnum):
+    MOBILE_APP = "mobile_app"
+    WEB_SAAS = "web_saas"
+    INTERNAL_TOOL = "internal_tool"
+    DATA_PIPELINE = "data_pipeline"
+
+
+class DetailLevel(StrEnum):
+    SUMMARY = "summary"
+    MEDIUM = "medium"
+    DETAILED = "detailed"
+
+
+class OutputFormat(StrEnum):
+    PHASES_TABLE = "phases_table"
+    LINE_ITEMS = "line_items"
+    NARRATIVE = "narrative"
+
+
+class ReferenceProject(BaseModel):
+    """Proyecto similar ya entregado: le da al modelo un orden de magnitud real."""
+
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(..., min_length=1, max_length=500)
+    actual_hours: int = Field(..., gt=0, description="Horas que costó realmente")
+
 
 class EstimationRequest(BaseModel):
-    """Petición con la transcripción de la reunión a estimar."""
+    """Parámetros de la estimación."""
 
-    transcription: str = Field(
+    description: str = Field(
         ...,
         min_length=20,
-        max_length=100_000,
-        description="Texto de la transcripción de la reunión con el cliente",
+        max_length=2000,
+        description="Descripción del proyecto (resumen de la reunión con el cliente)",
         examples=[
-            "En la reunión con el equipo de marketing, el cliente explicó que necesita una "
-            "landing page con formulario de contacto, integración con su CRM actual (HubSpot) "
-            "y una sección de blog con editor WYSIWYG."
+            "Landing page con formulario de contacto, integración con el CRM del cliente "
+            "(HubSpot) y un blog con editor WYSIWYG. El diseño ya existe en Figma."
         ],
     )
+    project_type: ProjectType
+    detail_level: DetailLevel
+    output_format: OutputFormat
+    reference_projects: list[ReferenceProject] | None = Field(None, max_length=5)
 
 
 class TokenUsage(BaseModel):
@@ -29,7 +72,7 @@ class TokenUsage(BaseModel):
 
 
 class EstimationMetadata(BaseModel):
-    """Metadatos de la llamada al LLM. En streaming viajan en el evento final `done`."""
+    """Métricas de la llamada al LLM."""
 
     model: str = Field(..., description="Modelo que generó la estimación")
     provider: Literal["openai", "anthropic"]
@@ -45,7 +88,14 @@ class EstimationMetadata(BaseModel):
     created_at: datetime
 
 
-class EstimationResponse(EstimationMetadata):
-    """Estimación generada y metadatos de la llamada."""
+class EstimationResult(BaseModel):
+    """Todo menos el texto. En streaming es el `data` del evento final `done`."""
 
-    estimation: str = Field(..., description="Estimación generada, en Markdown")
+    prompt_version: PromptVersion
+    metadata: EstimationMetadata
+
+
+class EstimationResponse(EstimationResult):
+    """Estimación generada (texto libre por ahora), versión del prompt y métricas."""
+
+    text: str = Field(..., description="Estimación generada, en Markdown")

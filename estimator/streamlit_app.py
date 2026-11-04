@@ -1,151 +1,155 @@
 """Cliente web del estimador: `uv run streamlit run streamlit_app.py`.
 
 Es un cliente HTTP puro de la API (UI → HTTP/SSE → FastAPI → LLM): no importa nada de
-`app/` ni conoce ninguna API key. Solo necesita la URL del servicio, que se lee de
-ESTIMATOR_API_URL (por defecto, el uvicorn local).
+`app/` ni conoce ninguna API key. La comunicación con la API está en `estimator_client.py`;
+aquí solo está la interfaz.
+
+El formulario produce un EstimationRequest tipado: el usuario elige parámetros y el
+servicio construye el prompt con sus templates.
 """
 
-import json
-import os
-from collections.abc import Iterable, Iterator
 from typing import Any
 
-import httpx
+import pandas as pd
 import streamlit as st
 
-API_URL = os.environ.get("ESTIMATOR_API_URL", "http://localhost:8000").rstrip("/")
-STREAM_ENDPOINT = f"{API_URL}/api/v1/estimate/stream"
-# Generar una estimación tarda; solo la conexión debe fallar rápido
-TIMEOUT = httpx.Timeout(120.0, connect=5.0)
-
-
-class EstimatorAPIError(Exception):
-    """La API no está disponible o devolvió un error."""
-
-
-def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, Any]]:
-    """Convierte las líneas de un stream SSE en pares (event, data).
-
-    Un evento son líneas `event:` / `data:` terminadas por una línea en blanco. Las que
-    empiezan por `:` son comentarios (keep-alive) y se ignoran. Nuestra API envía el
-    `data` siempre en JSON.
-    """
-    event, data = "message", []
-    for line in lines:
-        if not line:
-            if data:
-                yield event, json.loads("\n".join(data))
-            event, data = "message", []
-        elif not line.startswith(":"):
-            field, _, value = line.partition(":")
-            value = value.removeprefix(" ")
-            if field == "event":
-                event = value
-            elif field == "data":
-                data.append(value)
-
-
-def stream_estimation(transcription: str, metadata: dict[str, Any]) -> Iterator[str]:
-    """Pide la estimación a la API y va dando el texto según llega.
-
-    Al terminar, `metadata` contiene el evento `done` (modelo, tokens, latencia, coste).
-    """
-    try:
-        with httpx.stream(
-            "POST", STREAM_ENDPOINT, json={"transcription": transcription}, timeout=TIMEOUT
-        ) as response:
-            if response.status_code != 200:
-                response.read()
-                raise EstimatorAPIError(_describe_http_error(response))
-            for event, data in parse_sse(response.iter_lines()):
-                if event == "token":
-                    yield data
-                elif event == "done":
-                    metadata.update(data)
-                elif event == "error":
-                    raise EstimatorAPIError(data["detail"])
-    except httpx.ConnectError as exc:
-        raise EstimatorAPIError(
-            f"No se puede conectar con la API en {API_URL}. ¿Está arrancada? "
-            "(`uv run uvicorn app.main:app`)"
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise EstimatorAPIError(f"Error de comunicación con la API: {exc}") from exc
-
-    if not metadata:
-        raise EstimatorAPIError("La respuesta de la API se cortó antes de terminar.")
-
-
-def _describe_http_error(response: httpx.Response) -> str:
-    try:
-        detail = response.json()["detail"]
-    except (ValueError, KeyError):
-        return f"La API respondió {response.status_code}: {response.text}"
-    if isinstance(detail, list):  # 422: errores de validación de Pydantic
-        detail = "; ".join(error["msg"] for error in detail)
-    return f"La API respondió {response.status_code}: {detail}"
+from estimator_client import (
+    API_URL,
+    DESCRIPTION_MAX,
+    DESCRIPTION_MIN,
+    DETAIL_LEVELS,
+    OUTPUT_FORMATS,
+    PROJECT_TYPES,
+    PROMPT_VERSIONS,
+    EstimatorAPIError,
+    describe_params,
+    reference_projects,
+    stream_estimation,
+)
 
 
 def render_sidebar() -> None:
     with st.sidebar:
         st.header("Servicio")
         st.caption(f"API: `{API_URL}`")
-        if st.button("Nueva conversación", icon="🗑️", width="stretch"):
-            st.session_state.messages = []
-            st.session_state.last_result = None
+        if st.button("Limpiar historial", icon="🗑️", width="stretch"):
+            st.session_state.history = []
             st.rerun()
 
         st.subheader("Última llamada")
-        result = st.session_state.last_result
-        if result is None:
+        if not st.session_state.history:
             st.caption("Aún no se ha generado ninguna estimación.")
             return
 
-        usage = result["usage"]
-        st.markdown(f"**Modelo:** `{result['model']}`")
-        if result["cached"]:
+        last = st.session_state.history[-1]["result"]
+        meta, usage = last["metadata"], last["metadata"]["usage"]
+        st.markdown(f"**Prompt:** `{last['prompt_version']}`  \n**Modelo:** `{meta['model']}`")
+        if meta["cached"]:
             st.success("Respuesta servida desde la caché", icon="⚡")
         col_in, col_out = st.columns(2)
         col_in.metric("Tokens entrada", f"{usage['input_tokens']:,}".replace(",", "."))
         col_out.metric("Tokens salida", f"{usage['output_tokens']:,}".replace(",", "."))
         col_time, col_cost = st.columns(2)
-        col_time.metric("Tiempo", f"{result['latency_ms'] / 1000:.1f} s")
-        cost = result["estimated_cost_usd"]
+        col_time.metric("Tiempo", f"{meta['latency_ms'] / 1000:.1f} s")
+        cost = meta["estimated_cost_usd"]
         col_cost.metric("Coste", "—" if cost is None else f"${cost:.4f}")
-        if result["finish_reason"] == "length":
+        if meta["finish_reason"] == "length":
             st.warning("La respuesta se cortó al llegar al límite de tokens.")
 
 
 st.set_page_config(page_title="Estimador", page_icon="📐", layout="wide")
 st.title("📐 Estimador de proyectos de software")
-st.caption(
-    "Pega la transcripción de una reunión con el cliente y recibirás una estimación. "
-    "Cada mensaje es una estimación nueva."
-)
+st.caption("Describe el proyecto, elige cómo quieres la estimación y genera.")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-    st.session_state.last_result = None
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+with st.form("estimation_form"):
+    description = st.text_area(
+        "Descripción del proyecto",
+        max_chars=DESCRIPTION_MAX,
+        height=160,
+        placeholder="Qué necesita el cliente, para quién, integraciones, plazos…",
+    )
+    col_left, col_right = st.columns(2)
+    project_type = col_left.selectbox(
+        "Tipo de proyecto", list(PROJECT_TYPES), format_func=PROJECT_TYPES.__getitem__
+    )
+    output_format = col_right.selectbox(
+        "Formato de salida", list(OUTPUT_FORMATS), format_func=OUTPUT_FORMATS.__getitem__
+    )
+    detail_level = col_left.radio(
+        "Nivel de detalle",
+        list(DETAIL_LEVELS),
+        index=1,
+        format_func=DETAIL_LEVELS.__getitem__,
+        horizontal=True,
+    )
+    prompt_version = col_right.selectbox(
+        "Versión del prompt", list(PROMPT_VERSIONS), format_func=PROMPT_VERSIONS.__getitem__
+    )
+    with st.expander("Proyectos de referencia (opcional)"):
+        st.caption("Proyectos parecidos ya entregados, con sus horas reales. Máximo 5.")
+        references_table = st.data_editor(
+            pd.DataFrame(
+                {
+                    "name": pd.Series(dtype="string"),
+                    "description": pd.Series(dtype="string"),
+                    "actual_hours": pd.Series(dtype="Int64"),
+                }
+            ),
+            num_rows="dynamic",
+            width="stretch",
+            column_config={
+                "name": st.column_config.TextColumn("Nombre", max_chars=120),
+                "description": st.column_config.TextColumn("Descripción", max_chars=500),
+                "actual_hours": st.column_config.NumberColumn("Horas reales", min_value=1, step=1),
+            },
+            key="reference_projects",
+        )
+    submitted = st.form_submit_button("Generar estimación", type="primary")
 
-if prompt := st.chat_input("Pega aquí la transcripción de la reunión…"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        metadata: dict[str, Any] = {}
+shown_latest = False
+if submitted:
+    payload = {
+        "description": description.strip(),
+        "project_type": project_type,
+        "detail_level": detail_level,
+        "output_format": output_format,
+        "reference_projects": reference_projects(references_table),
+    }
+    if len(payload["description"]) < DESCRIPTION_MIN:
+        st.warning(f"La descripción debe tener al menos {DESCRIPTION_MIN} caracteres.")
+    else:
+        st.subheader("Estimación")
+        st.caption(describe_params(payload, prompt_version))
+        result: dict[str, Any] = {}
         try:
-            estimation = st.write_stream(stream_estimation(prompt, metadata))
+            text = st.write_stream(stream_estimation(payload, prompt_version, result))
         except EstimatorAPIError as exc:
-            # Sin estimación, la pregunta tampoco se queda en el historial
-            st.session_state.messages.pop()
             st.error(str(exc))
         else:
-            st.session_state.messages.append({"role": "assistant", "content": estimation})
-            st.session_state.last_result = metadata
+            st.session_state.history.append(
+                {
+                    "payload": payload,
+                    "prompt_version": prompt_version,
+                    "text": text,
+                    "result": result,
+                }
+            )
+            shown_latest = True
+elif st.session_state.history:
+    latest = st.session_state.history[-1]
+    st.subheader("Estimación")
+    st.caption(describe_params(latest["payload"], latest["prompt_version"]))
+    st.markdown(latest["text"])
+    shown_latest = True
+
+previous = st.session_state.history[:-1] if shown_latest else st.session_state.history
+if previous:
+    st.subheader("Estimaciones anteriores")
+    for item in reversed(previous):
+        with st.expander(describe_params(item["payload"], item["prompt_version"])):
+            st.markdown(item["text"])
 
 render_sidebar()

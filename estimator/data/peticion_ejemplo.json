@@ -1,0 +1,13 @@
+{
+  "description": "En la reunión con el equipo de marketing, el cliente explicó que necesita una landing page con formulario de contacto, integración con su CRM actual (HubSpot) y una sección de blog con editor WYSIWYG. El plazo ideal sería tenerlo listo en 4 semanas. El diseño ya existe en Figma.",
+  "project_type": "web_saas",
+  "detail_level": "medium",
+  "output_format": "phases_table",
+  "reference_projects": [
+    {
+      "name": "Web corporativa con blog",
+      "description": "Web de 6 páginas con blog autogestionable y alta en newsletter (Mailchimp)",
+      "actual_hours": 110
+    }
+  ]
+}

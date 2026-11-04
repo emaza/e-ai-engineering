@@ -1,0 +1,157 @@
+{#
+  Ejemplos few-shot (CAG): proyectos inventados, de tipos distintos.
+  Los datos están estructurados y la macro los pinta en el output_format y el
+  detail_level pedidos, para que los ejemplos nunca contradigan las instrucciones.
+  Horas, costes y totales se calculan aquí con `rates`: siempre cuadran.
+  v2: cada partida lleva rango optimista (x0,8) / probable / pesimista (x1,4), el coste
+  va sobre las horas probables y se añade una contingencia del 15 %.
+#}
+{% set examples = [
+  {
+    "title": "App móvil de reservas para una cadena de gimnasios",
+    "project_type": "mobile_app",
+    "description": "Una cadena de 5 gimnasios quiere una app móvil (iOS y Android) para que sus socios reserven clases dirigidas, paguen la cuota mensual con tarjeta y reciban recordatorios. Los monitores necesitan un panel web sencillo para publicar horarios y ver la ocupación de cada clase.",
+    "phases": [
+      {"name": "Diseño", "confidence_pct": 85,
+       "assumptions": ["El cliente aporta logotipo y guía de marca."],
+       "tasks": [["Diseño UI/UX de la app y del panel web", "design", 60]]},
+      {"name": "Backend", "confidence_pct": 75,
+       "assumptions": ["Stripe como pasarela de pago; sin facturación fiscal propia."],
+       "tasks": [["API de socios, clases, plazas y reservas", "dev", 80],
+                 ["Pagos recurrentes con Stripe", "dev", 40]]},
+      {"name": "App y panel web", "confidence_pct": 70,
+       "assumptions": ["Una sola base de código Flutter para iOS y Android."],
+       "tasks": [["App Flutter: registro, horarios y reservas", "dev", 120],
+                 ["Notificaciones push de recordatorio", "dev", 20],
+                 ["Panel web para monitores", "dev", 50]]},
+      {"name": "QA y publicación", "confidence_pct": 80,
+       "assumptions": ["Las cuentas de desarrollador de Apple y Google son del cliente."],
+       "tasks": [["Testing, QA y publicación en las stores", "dev", 40]]}
+    ],
+    "team": "2 desarrolladores (1 móvil + 1 backend) + 1 diseñador UX (part-time)",
+    "duration": "10-12 semanas"
+  },
+  {
+    "title": "Herramienta interna de gestión de vacaciones",
+    "project_type": "internal_tool",
+    "description": "Una empresa de 300 empleados quiere sustituir sus hojas de cálculo por una herramienta interna para solicitar y aprobar vacaciones. Los responsables aprueban desde la propia herramienta, RRHH ve un calendario por departamento y el acceso debe ser con las cuentas de Google Workspace de la empresa.",
+    "phases": [
+      {"name": "Diseño", "confidence_pct": 90,
+       "assumptions": ["Librería de componentes estándar, sin diseño de marca."],
+       "tasks": [["Flujos y pantallas: solicitud, aprobación y calendario", "design", 24]]},
+      {"name": "Desarrollo", "confidence_pct": 75,
+       "assumptions": ["Los saldos iniciales se importan una sola vez desde la hoja de cálculo actual."],
+       "tasks": [["Acceso con Google Workspace (SSO)", "dev", 16],
+                 ["Solicitudes, saldo de días y aprobaciones", "dev", 48],
+                 ["Calendario por departamento y exportación CSV", "dev", 32],
+                 ["Notificaciones por email", "dev", 12]]},
+      {"name": "QA y despliegue", "confidence_pct": 85,
+       "assumptions": ["Se despliega en la cuenta de nube que ya tiene el cliente."],
+       "tasks": [["Testing, QA y despliegue", "dev", 20]]}
+    ],
+    "team": "1 desarrollador full-stack + 1 diseñador (part-time)",
+    "duration": "5-6 semanas"
+  },
+  {
+    "title": "Pipeline de ventas a data warehouse",
+    "project_type": "data_pipeline",
+    "description": "Una cadena de 40 tiendas quiere centralizar cada noche las ventas de su TPV y de su ecommerce (Shopify) en un data warehouse, con un cuadro de mando de ventas por tienda y por producto.",
+    "phases": [
+      {"name": "Análisis de fuentes", "confidence_pct": 80,
+       "assumptions": ["El TPV exporta las ventas del día en CSV por SFTP."],
+       "tasks": [["Análisis de las fuentes y modelo de datos", "dev", 24]]},
+      {"name": "Ingesta y transformación", "confidence_pct": 70,
+       "assumptions": ["Menos de 1 millón de líneas de venta al mes."],
+       "tasks": [["Ingesta diaria del TPV (SFTP) y de la API de Shopify", "dev", 40],
+                 ["Transformaciones y modelo en estrella con dbt", "dev", 48],
+                 ["Orquestación, reintentos y alertas", "dev", 24]]},
+      {"name": "Cuadro de mando", "confidence_pct": 80,
+       "assumptions": ["Looker Studio, sin licencias adicionales."],
+       "tasks": [["Diseño del cuadro de mando", "design", 16],
+                 ["Cuadro de mando de ventas por tienda y producto", "dev", 24]]},
+      {"name": "Validación y puesta en producción", "confidence_pct": 75,
+       "assumptions": ["El cliente valida las cifras contra su contabilidad en una semana."],
+       "tasks": [["Validación de datos con el cliente y puesta en producción", "dev", 20]]}
+    ],
+    "team": "1 ingeniero de datos + 1 analista de datos (part-time)",
+    "duration": "6-8 semanas"
+  }
+] %}
+{% set role_labels = {"dev": "Desarrollo", "design": "Diseño"} %}
+{% set contingency_pct = 15 %}
+{% macro hours_range(hours) %}{{ (hours * 0.8) | round | int }} / {{ hours }} / {{ (hours * 1.4) | round | int }}{% endmacro %}
+{% macro render_example(example) %}
+{% set total = namespace(hours=0, cost=0) %}
+### Estimación: {{ example.title }}
+
+{% if output_format == "phases_table" %}
+| Fase | Tareas | Perfil | Horas (optimista / probable / pesimista) | Coste probable | confidence_pct |
+|---|---|---|---:|---:|---:|
+{% for phase in example.phases %}
+{% set ph = namespace(hours=0, cost=0, roles=[]) %}
+{% for name, role, hours in phase.tasks %}
+{% set ph.hours = ph.hours + hours %}
+{% set ph.cost = ph.cost + hours * rates[role] %}
+{% if role_labels[role] not in ph.roles %}{% set ph.roles = ph.roles + [role_labels[role]] %}{% endif %}
+{% endfor %}
+{% set total.hours = total.hours + ph.hours %}
+{% set total.cost = total.cost + ph.cost %}
+| {{ phase.name }} | {{ phase.tasks | map(attribute=0) | join("; ") }} | {{ ph.roles | join(" + ") }} | {{ hours_range(ph.hours) }} | {{ ph.cost | eur }} | {{ phase.confidence_pct }} |
+{% endfor %}
+{% elif output_format == "line_items" %}
+| Tarea | Perfil | Horas (optimista / probable / pesimista) | Coste probable |
+|---|---|---:|---:|
+{% for phase in example.phases %}
+{% for name, role, hours in phase.tasks %}
+{% set total.hours = total.hours + hours %}
+{% set total.cost = total.cost + hours * rates[role] %}
+| {{ name }} | {{ role_labels[role] }} | {{ hours_range(hours) }} | {{ (hours * rates[role]) | eur }} |
+{% endfor %}
+{% endfor %}
+{% else %}
+{% for phase in example.phases %}
+{% set ph = namespace(hours=0, cost=0) %}
+{% for name, role, hours in phase.tasks %}
+{% set ph.hours = ph.hours + hours %}
+{% set ph.cost = ph.cost + hours * rates[role] %}
+{% endfor %}
+{% set total.hours = total.hours + ph.hours %}
+{% set total.cost = total.cost + ph.cost %}
+**{{ phase.name }}** (entre {{ (ph.hours * 0.8) | round | int }} y {{ (ph.hours * 1.4) | round | int }} horas; {{ ph.hours }} probables, {{ ph.cost | eur }}): {{ phase.tasks | map(attribute=0) | join("; ") }}.
+
+{% endfor %}
+{% endif %}
+{% if output_format != "narrative" %}
+
+{% endif %}
+**Total estimado: {{ hours_range(total.hours) }} horas (optimista / probable / pesimista)**
+**Coste probable: {{ total.cost | eur }}**
+**Contingencia ({{ contingency_pct }} %): {{ (total.cost * contingency_pct / 100) | eur }}**
+**Coste total con contingencia: {{ (total.cost * (1 + contingency_pct / 100)) | eur }}**
+**Equipo recomendado: {{ example.team }}**
+**Duración estimada: {{ example.duration }}**
+{% if detail_level == "medium" %}
+
+**Supuestos:**
+{% for phase in example.phases %}
+- {{ phase.assumptions[0] }}
+{% endfor %}
+{% elif detail_level == "detailed" %}
+
+**Asunciones por fase:**
+{% for phase in example.phases %}
+- {{ phase.name }}: {{ phase.assumptions | join(" ") }}
+{% endfor %}
+{% endif %}
+{% endmacro %}
+## Estimaciones de referencia
+
+{% for example in examples %}
+{% if not loop.first %}
+---
+
+{% endif %}
+**Proyecto ({{ example.project_type }}):** {{ example.description }}
+
+{{ render_example(example) }}
+{% endfor %}

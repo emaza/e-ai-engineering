@@ -9,7 +9,7 @@ from app.config import SettingsDep, get_settings
 from app.logging_config import configure_logging
 from app.routers import estimations
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 @asynccontextmanager
@@ -30,10 +30,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Estimador CAG",
     description=(
-        "Servicio de estimación de proyectos de software con IA. Recibe la transcripción de "
-        "una reunión con el cliente y devuelve una estimación generada por un LLM con "
-        "arquitectura **CAG** (Cache Augmented Generation): las estimaciones de referencia "
-        "viajan como contexto estático dentro del prompt."
+        "Servicio de estimación de proyectos de software con IA. Recibe la descripción de "
+        "un proyecto y parámetros tipados (tipo, nivel de detalle, formato de salida) y "
+        "devuelve una estimación generada por un LLM. El prompt sale de templates Jinja2 "
+        "versionados (`?prompt_version=v1|v2`) y lleva estimaciones de referencia como "
+        "contexto estático (**CAG**, Cache Augmented Generation)."
     ),
     version=VERSION,
     lifespan=lifespan,
